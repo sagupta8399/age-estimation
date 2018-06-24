@@ -1,0 +1,87 @@
+
+# In[1]:
+
+
+import tensorflow as tf
+import numpy as np
+import pandas as pd
+import scipy.io as sio
+
+
+# In[10]:
+
+
+data = sio.loadmat('awa_test')
+data_seen = data['X_tr']
+data_unseen = data['X_te']
+seen_semantic = data['S_tr']
+latent_dim = 100
+learning_rate = 0.001
+
+
+# In[11]:
+
+
+X1 = tf.placeholder(tf.float32,shape=[None,1024])
+X2 = tf.placeholder(tf.float32,shape=[None,1024])
+W = tf.Variable(tf.random_normal([1024,latent_dim]))
+b = tf.Variable(tf.random_normal([1,latent_dim]))
+X1_proj = tf.cast(tf.add(tf.matmul(X1,W),b),tf.float32)
+X2_proj = tf.cast(tf.add(tf.matmul(X2,W),b),tf.float32)
+
+
+# In[12]:
+
+
+#For the seen visual, calculate the covariance matrix
+temp = tf.matmul(tf.ones([tf.shape(X1_proj)[0],tf.shape(X1_proj)[0]]),X1_proj)*tf.cast(1/tf.shape(X1_proj)[0],tf.float32)
+cov1 = tf.subtract(X1_proj,temp)
+#For unseen visual, calculate the covariance matrix
+temp = tf.matmul(tf.ones([tf.shape(X2_proj)[0],tf.shape(X2_proj)[0]]),X2_proj)*tf.cast(1/tf.shape(X2_proj)[0],tf.float32)
+cov2 = tf.subtract(X2_proj,temp)
+
+
+# In[13]:
+
+
+loss = tf.norm(tf.subtract(tf.log(cov1),tf.log(cov2)))
+
+
+# In[20]:
+
+
+def get_batches(batch_size, dataset, name):
+        total_batch = int(dataset.shape[0]/batch_size)
+        batches = []
+        if total_batch == 0:
+            return [dataset]
+        for i in range(total_batch):
+            if i == total_batch-1:
+                batches.append(dataset[i*batch_size:, :])
+            else:
+                batches.append(dataset[i*batch_size:(i+1)*batch_size, :])
+        return batches
+
+
+# In[ ]:
+
+
+optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss)
+init = tf.global_variables_initializer()
+with tf.Session() as sess:
+    sess.run(init)
+    for epoch in range(500):
+        avg_cost = 0
+        total_batch=60
+        batches_data_seen = get_batches(100, data_seen, 'train')
+        batches_data_unseen = get_batches(100, data_unseen, 'train')
+        for i in range(total_batch):
+#             batch_x1, _ = tf.train.batch(data_seen,batch_size=100)
+#             batch_x2, _ = tf.train.batch(data_unseen,batch_size=100)
+			batch_x1 = batches_data_seen[i]
+			batch_x2 = batches_data_unseen[i]
+			_ , c = sess.run([optimizer, loss], feed_dict = {X1: batch_x1, X2: batch_x2})
+			avg_cost +=c
+			print ("Epoch:", (epoch+1), "cost =", "{:.5f}".format(avg_cost))
+    
+	print ("Training complete!")
